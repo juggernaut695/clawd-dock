@@ -1,0 +1,1563 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Side Dock</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="side-dock.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+<style>
+  html, body, #root {
+    margin: 0; padding: 0;
+    height: 100%; width: 100%;
+    background: transparent;
+    font-family: 'Inter', system-ui, sans-serif;
+    overflow: hidden;
+  }
+  /* Header acts as the frameless-window drag handle */
+  .header { -webkit-app-region: drag; }
+  .header *, .header button, .header input { -webkit-app-region: no-drag; }
+
+  /* ─── Standalone chat window (mode=chat) — true frosted glass ───── */
+  /* The pywebview window is built UPFRONT with transparent=True (works
+     pre-start). DWM applies acrylic + rounded corners. We just need every
+     layer alpha-clear so the OS blur of the desktop shows through. */
+  html, body.fullchat {
+    background: transparent !important;
+    margin: 0;
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  body.fullchat #root {
+    height: 100vh;
+    border-radius: 16px;
+    overflow: hidden;
+    background: transparent;     /* fully see-through */
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.16);
+  }
+  /* Hide the dock's colourful gradient + noise — they're opaque and would
+     block the desktop see-through. */
+  body.fullchat .app::before,
+  body.fullchat .app::after {
+    display: none !important;
+  }
+  body.fullchat .app {
+    background: transparent;
+    height: 100vh;
+  }
+  /* In chat-window mode, dial down every chrome surface so more of the
+     OS frosted-glass shows through. The dock keeps its bolder defaults. */
+  body.fullchat .cc-chat-head {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.08);
+    backdrop-filter: blur(18px) saturate(1.3);
+    -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  }
+  body.fullchat .cc-msg.assistant {
+    background:
+      linear-gradient(135deg,
+        rgba(255,255,255,0.08) 0%,
+        rgba(255,255,255,0.03) 100%);
+    border-color: rgba(255,255,255,0.14);
+    backdrop-filter: blur(32px) saturate(1.8);
+    -webkit-backdrop-filter: blur(32px) saturate(1.8);
+    box-shadow:
+      0 6px 26px rgba(0,0,0,0.25),
+      inset 0 1px 0 rgba(255,255,255,0.22),
+      inset 0 0 0 1px rgba(255,255,255,0.03);
+  }
+  body.fullchat .cc-msg.user {
+    box-shadow: 0 4px 16px rgba(94,234,212,0.18);
+    opacity: 0.92;
+  }
+  body.fullchat .cc-chat-composer {
+    background: rgba(255,255,255,0.03);
+    border-color: rgba(255,255,255,0.08);
+    backdrop-filter: blur(18px) saturate(1.3);
+    -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  }
+  body.fullchat .cc-composer-branch {
+    border-bottom-color: rgba(255,255,255,0.05);
+  }
+  body.fullchat .cc-composer-tools {
+    border-top-color: rgba(255,255,255,0.04);
+  }
+  body.fullchat .branch-pill,
+  body.fullchat .diff-badge {
+    background: rgba(0,0,0,0.18);
+    border-color: rgba(255,255,255,0.06);
+  }
+  body.fullchat .pr-btn {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.10);
+  }
+
+  /* Task editor — when the body is in fullchat (transparent) mode and the
+     hash routed us into the standalone task window. */
+  body.fullchat .task-editor-window {
+    height: 100vh;
+    padding: 22px 28px 18px;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+  }
+  body.fullchat .task-editor-window .task-detail {
+    flex: 1; min-height: 0;
+    margin-top: 0;
+  }
+  body.fullchat .task-editor-window .task-detail-head {
+    -webkit-app-region: drag;
+  }
+  body.fullchat .task-editor-window .task-detail-head .td-back,
+  body.fullchat .task-editor-window .task-detail-head .td-check,
+  body.fullchat .task-editor-window .task-detail-head .td-delete {
+    -webkit-app-region: no-drag;
+  }
+  body.fullchat .task-editor-window .td-title {
+    font-size: 24px;
+  }
+  body.fullchat .task-editor-window .td-desc {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    font-size: 14px;
+    line-height: 1.65;
+    padding: 18px 22px;
+    min-height: 360px;
+  }
+  body.fullchat .task-editor-window .td-desc:focus {
+    border-color: rgba(94,234,212,0.40);
+    background: rgba(255,255,255,0.05);
+  }
+  .td-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 12px;
+    flex: 1;
+    color: var(--ink-mute);
+    font-size: 14px;
+  }
+  .td-loading-back {
+    background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.18);
+    color: var(--ink);
+    padding: 6px 14px;
+    border-radius: 8px;
+    font: inherit; font-size: 12px;
+    cursor: pointer;
+  }
+  .td-loading-back:hover { background: rgba(255,255,255,0.16); }
+  /* Drag handle: the chat header */
+  body.fullchat .cc-chat-head {
+    -webkit-app-region: drag;
+  }
+  body.fullchat .cc-chat-head button,
+  body.fullchat .cc-chat-head .more,
+  body.fullchat .cc-chat-head .caret {
+    -webkit-app-region: no-drag;
+  }
+  /* Disable text selection on chrome */
+  .header, .tabs, .footer, .panel-head, .panel-arrow,
+  .mic-btn, .action-primary, .action-btn,
+  .voice-status, .panel-title, .tab,
+  .metric-card .ml, .metric-card .mv, .metric-card .sub,
+  .kv .k, .kv .v {
+    user-select: none;
+  }
+
+  /* Vertical tab sidebar — replaces the horizontal pill tabs */
+  .dock-row {
+    display: flex;
+    gap: 8px;
+    flex: 1;
+    margin: 0 12px;
+    min-height: 0;
+  }
+  .vtabs {
+    flex: 0 0 60px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: var(--glass);
+    backdrop-filter: blur(40px) saturate(1.7);
+    -webkit-backdrop-filter: blur(40px) saturate(1.7);
+    border: 1px solid var(--stroke);
+    border-radius: 18px;
+    padding: 6px 4px;
+    box-shadow: var(--shadow);
+  }
+  .vtab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 8px 4px;
+    border-radius: 12px;
+    cursor: pointer;
+    color: var(--ink-mute);
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    user-select: none;
+    transition: 0.15s;
+  }
+  .vtab:hover {
+    color: var(--ink-soft);
+    background: rgba(255,255,255,0.06);
+  }
+  .vtab.active {
+    background: rgba(255,255,255,0.20);
+    color: var(--ink);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.20),
+                inset 0 1px 0 rgba(255,255,255,0.30);
+  }
+  .vtab .vtab-icon {
+    font-size: 16px;
+    line-height: 1;
+    font-weight: 500;
+  }
+  /* When inside .dock-row, .content drops its own padding/margin */
+  .dock-row > .content {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    padding: 0 0 12px;
+  }
+
+  /* Hide all scrollbars (mouse-wheel still works). The design's .content
+     does this already; mirror it for the transcript and other internal
+     scrollers so we never see the default chunky Windows scrollbar. */
+  .transcript,
+  .transcript::-webkit-scrollbar,
+  .task-list,
+  .task-list::-webkit-scrollbar,
+  .cc-list,
+  .cc-list::-webkit-scrollbar,
+  .panel,
+  .panel::-webkit-scrollbar { scrollbar-width: none; }
+  .transcript::-webkit-scrollbar,
+  .task-list::-webkit-scrollbar,
+  .cc-list::-webkit-scrollbar,
+  .panel::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+  /* ─── Tasks tab ─────────────────────────────────────── */
+  .task-add {
+    display: flex;
+    gap: 8px;
+    background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 14px;
+    padding: 6px 6px 6px 14px;
+    margin-bottom: 12px;
+  }
+  .task-add:focus-within {
+    border-color: rgba(94,234,212,0.55);
+    background: rgba(255,255,255,0.14);
+  }
+  .task-add input {
+    flex: 1; background: transparent; border: 0; outline: 0;
+    color: var(--ink); font: inherit; font-size: 14px;
+    letter-spacing: -0.005em; padding: 4px 0;
+  }
+  .task-add input::placeholder { color: rgba(255,255,255,0.45); }
+  .task-add button {
+    width: 30px; height: 30px;
+    border-radius: 50%; border: 0;
+    background: var(--mint); color: #04201b;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: 0.15s;
+  }
+  .task-add button:disabled {
+    background: rgba(255,255,255,0.14);
+    color: rgba(255,255,255,0.4); cursor: default;
+  }
+
+  .task-list { display: flex; flex-direction: column; gap: 6px; }
+  .task {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 12px;
+  }
+  .task.done { opacity: 0.55; }
+  .task.done .task-text { text-decoration: line-through; color: var(--ink-mute); }
+  .task-check {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255,255,255,0.4);
+    background: transparent;
+    cursor: pointer;
+    color: #04201b;
+    font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: 0.15s;
+  }
+  .task.done .task-check {
+    background: var(--mint);
+    border-color: var(--mint);
+  }
+  .task-text {
+    flex: 1; color: var(--ink); font-size: 13px;
+    letter-spacing: -0.005em;
+  }
+  .task-delete {
+    width: 22px; height: 22px;
+    border-radius: 50%; border: 0; background: transparent;
+    color: var(--ink-mute); font-size: 16px; cursor: pointer;
+    transition: 0.15s; line-height: 1;
+  }
+  .task-delete:hover {
+    background: rgba(255,80,80,0.2); color: #fca5a5;
+  }
+  .task-text { cursor: pointer; transition: color 0.10s; }
+  .task-text:hover { color: var(--mint); }
+  .task-has-notes {
+    color: var(--mint);
+    font-weight: 700;
+    margin-left: 6px;
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  /* ─── Task detail editor ─── */
+  .task-detail {
+    display: flex; flex-direction: column;
+    flex: 1; min-height: 0;
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .task-detail-head {
+    display: flex; align-items: center; gap: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.10);
+  }
+  .task-detail-head .td-back {
+    background: transparent; border: 0;
+    color: var(--ink-soft);
+    font-size: 22px; line-height: 1;
+    cursor: pointer;
+    padding: 2px 10px; border-radius: 6px;
+  }
+  .task-detail-head .td-back:hover {
+    background: rgba(255,255,255,0.10);
+    color: var(--ink);
+  }
+  .task-detail-head .td-check {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255,255,255,0.4);
+    background: transparent;
+    cursor: pointer;
+    color: #04201b;
+    font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    transition: 0.15s;
+  }
+  .task-detail-head .td-check.done {
+    background: var(--mint);
+    border-color: var(--mint);
+  }
+  .task-detail-head .td-meta-status {
+    font-size: 11px;
+    color: var(--ink-mute);
+    flex: 1;
+    margin-left: 8px;
+  }
+  .task-detail-head .td-delete {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    border: 0; background: transparent;
+    color: var(--ink-mute);
+    font-size: 18px; cursor: pointer;
+    line-height: 1;
+    transition: 0.15s;
+  }
+  .task-detail-head .td-delete:hover {
+    background: rgba(255,80,80,0.20);
+    color: #fca5a5;
+  }
+  .td-title {
+    background: transparent;
+    border: 0; outline: 0;
+    color: var(--ink);
+    font: inherit;
+    font-size: 18px; font-weight: 500;
+    letter-spacing: -0.015em;
+    padding: 6px 2px;
+  }
+  .td-title::placeholder { color: rgba(255,255,255,0.30); }
+  .td-title.done {
+    color: var(--ink-mute);
+    text-decoration: line-through;
+  }
+  .td-desc {
+    flex: 1;
+    min-height: 240px;
+    background: rgba(0,0,0,0.20);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 12px;
+    padding: 14px 16px;
+    color: var(--ink);
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.6;
+    letter-spacing: -0.005em;
+    resize: none;
+    outline: 0;
+    transition: 0.15s;
+  }
+  .td-desc:focus {
+    border-color: rgba(94,234,212,0.45);
+    background: rgba(0,0,0,0.28);
+    box-shadow: 0 0 0 3px rgba(94,234,212,0.10);
+  }
+  .td-desc::placeholder { color: rgba(255,255,255,0.30); }
+  .td-foot {
+    display: flex; justify-content: flex-end;
+    padding: 0 4px 4px;
+    font-size: 11px;
+    color: var(--ink-faint);
+    font-feature-settings: 'tnum';
+  }
+
+  /* ─── Claude Code tab (accordion) ─────────────────── */
+  .cc-list { display: flex; flex-direction: column; gap: 8px; }
+  .cc-group {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .cc-group.open { background: rgba(255,255,255,0.12); }
+  .cc-group-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .cc-group-head:hover { background: rgba(255,255,255,0.06); }
+  .cc-group-name {
+    flex: 1; font-size: 14px; font-weight: 500;
+    color: var(--ink); letter-spacing: -0.005em;
+  }
+  .cc-group-count {
+    font-size: 11px; color: var(--ink-mute);
+  }
+  .cc-caret {
+    width: 18px; height: 18px;
+    color: var(--ink-mute);
+    transition: transform 0.2s;
+  }
+  .cc-group.open .cc-caret { transform: rotate(90deg); color: var(--mint); }
+  .cc-group-body {
+    border-top: 1px solid rgba(255,255,255,0.12);
+    padding: 8px 12px 12px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .cc-instance {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px;
+    background: rgba(0,0,0,0.18);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px;
+  }
+  .cc-instance .info { flex: 1; min-width: 0; }
+  .cc-instance .name {
+    font-size: 12px; color: var(--ink); font-weight: 500;
+    letter-spacing: -0.005em;
+  }
+  .cc-instance .dir {
+    font-size: 10px; color: var(--ink-mute);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .cc-launch {
+    background: var(--mint); color: #04201b; border: 0;
+    padding: 6px 10px; border-radius: 8px; cursor: pointer;
+    font-size: 11px; font-weight: 600;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .cc-launch:hover { background: var(--mint-deep); }
+  .cc-iconbtn {
+    width: 22px; height: 22px;
+    border-radius: 6px; border: 0; background: transparent;
+    color: var(--ink-mute); cursor: pointer; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .cc-iconbtn:hover { color: var(--ink); background: rgba(255,255,255,0.1); }
+  .cc-add-row {
+    display: flex; gap: 8px;
+    padding: 4px 2px 2px;
+  }
+  .cc-add-row button {
+    flex: 1;
+    background: rgba(94,234,212,0.10);
+    border: 1px dashed rgba(94,234,212,0.4);
+    color: var(--mint);
+    padding: 8px;
+    border-radius: 10px;
+    font-size: 12px; font-weight: 500;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .cc-add-row button:hover {
+    background: rgba(94,234,212,0.18);
+  }
+  .cc-empty {
+    color: var(--ink-mute); font-size: 12px;
+    padding: 16px 4px; text-align: center;
+  }
+
+  /* ─── Code tab — Claude-app-style sidebar (matches the Claude desktop app) ─── */
+  .ca-shell {
+    display: flex; flex-direction: column;
+    flex: 1; min-height: 0;
+    gap: 4px;
+    margin-top: 4px;
+  }
+  .ca-tabs {
+    display: flex; gap: 4px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 999px;
+    padding: 4px;
+    margin-bottom: 8px;
+  }
+  .ca-tab {
+    flex: 1;
+    padding: 6px 8px;
+    font-size: 11px;
+    text-align: center;
+    border-radius: 999px;
+    cursor: pointer;
+    color: var(--ink-mute);
+    display: flex; align-items: center; justify-content: center; gap: 5px;
+    user-select: none;
+  }
+  .ca-tab:hover { color: var(--ink-soft); }
+  .ca-tab.active {
+    background: rgba(255,255,255,0.16);
+    color: var(--ink);
+  }
+  .ca-actions { display: flex; flex-direction: column; margin-bottom: 8px; }
+  .ca-action {
+    display: flex; align-items: center; gap: 12px;
+    padding: 9px 6px;
+    font-size: 13px;
+    color: var(--ink-soft);
+    cursor: pointer;
+    border-radius: 8px;
+    transition: 0.12s;
+  }
+  .ca-action:hover { background: rgba(255,255,255,0.08); color: var(--ink); }
+  .ca-action .ic {
+    width: 18px; text-align: center;
+    color: var(--ink-mute);
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .ca-section { margin-bottom: 6px; }
+  .ca-section-head {
+    padding: 10px 6px 4px;
+    font-size: 11px;
+    color: var(--ink-mute);
+    font-weight: 500;
+  }
+  .ca-pinned-empty {
+    padding: 6px 6px 6px 24px;
+    font-size: 12px;
+    color: var(--ink-faint);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .ca-recent {
+    display: flex; align-items: center; gap: 12px;
+    padding: 7px 6px;
+    font-size: 13px;
+    color: var(--ink-soft);
+    cursor: pointer;
+    border-radius: 8px;
+    white-space: nowrap;
+    transition: 0.10s;
+  }
+  .ca-recent:hover { background: rgba(255,255,255,0.06); color: var(--ink); }
+  .ca-recent.active {
+    background: rgba(255,255,255,0.10);
+    color: var(--ink);
+  }
+  .ca-recent .bullet {
+    width: 18px; text-align: center;
+    color: var(--ink-faint);
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  .ca-recent.active .bullet { color: var(--ink); }
+  .ca-recent.live .bullet { color: var(--mint); }
+  .ca-recent .text {
+    flex: 1; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ca-recent .x {
+    width: 14px; height: 14px;
+    color: var(--ink-faint); font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 3px;
+    opacity: 0;
+  }
+  .ca-recent:hover .x { opacity: 1; }
+  .ca-recent .x:hover { color: #fca5a5; background: rgba(255,80,80,0.18); }
+
+  /* ─── Claude Code recent chats (flat list, mirrors desktop sidebar) ─── */
+  .ca-chat-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 7px 6px;
+    font-size: 13px;
+    color: var(--ink-soft);
+    cursor: pointer;
+    border-radius: 8px;
+    white-space: nowrap;
+    transition: 0.10s;
+    user-select: none;
+  }
+  .ca-chat-row:hover {
+    background: rgba(255,255,255,0.06);
+    color: var(--ink);
+  }
+  .ca-chat-row .ca-chat-bullet {
+    width: 14px; text-align: center;
+    color: var(--ink-faint);
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  .ca-chat-row .ca-chat-text {
+    flex: 1;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    letter-spacing: -0.005em;
+  }
+
+  .ca-user {
+    margin-top: auto;
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 6px 2px;
+    border-top: 1px solid rgba(255,255,255,0.10);
+  }
+  .ca-user .avatar {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--mint), var(--mint-deep));
+    box-shadow: 0 0 10px rgba(94,234,212,0.35), inset 0 1px 0 rgba(255,255,255,0.4);
+    flex-shrink: 0;
+  }
+  .ca-user .name {
+    font-size: 13px; color: var(--ink);
+    flex: 1;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .ca-user .name .badge { color: var(--ink-mute); margin-left: 4px; }
+  .ca-user .ic {
+    color: var(--ink-mute);
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .ca-user { position: relative; cursor: pointer; transition: 0.12s; }
+  .ca-user:hover { background: rgba(255,255,255,0.04); border-radius: 8px; }
+
+  /* Usage popover (anchored above the user pill) */
+  .usage-popover {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 0; right: 0;
+    background: rgba(20,22,26,0.96);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.5),
+                inset 0 1px 0 rgba(255,255,255,0.08);
+    z-index: 100;
+    cursor: default;
+    animation: cc-msg-in 0.18s ease-out;
+  }
+  .usage-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 10px;
+  }
+  .usage-head .usage-name {
+    font-size: 13px; font-weight: 500; color: var(--ink);
+    letter-spacing: -0.005em;
+  }
+  .usage-head .usage-plan {
+    font-size: 10px; color: #04201b;
+    background: var(--mint);
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+  .usage-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 14px;
+  }
+  .usage-cell {
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .usage-cell .k {
+    font-size: 10px;
+    color: var(--ink-mute);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .usage-cell .v {
+    font-size: 17px;
+    font-weight: 500;
+    color: var(--ink);
+    font-feature-settings: 'tnum';
+    letter-spacing: -0.01em;
+  }
+  .usage-foot {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    font-size: 10px;
+    color: var(--ink-faint);
+    text-align: center;
+  }
+
+  /* ─── Cowork sub-tab ─── */
+  .ca-cowork, .cowork-redirect {
+    display: flex; flex-direction: column;
+    flex: 1; min-height: 0;
+    margin-top: 8px;
+    gap: 12px;
+  }
+  .cowork-head {
+    padding: 0 4px 4px;
+  }
+  .cowork-title {
+    font-size: 14px; font-weight: 500; color: var(--ink);
+    letter-spacing: -0.005em;
+  }
+  .cowork-sub {
+    font-size: 11px; color: var(--ink-mute);
+    margin-top: 2px;
+  }
+  .cowork-composer {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 12px;
+    padding: 8px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .cowork-composer textarea {
+    background: transparent;
+    border: 0; outline: 0; resize: none;
+    color: var(--ink);
+    font: inherit; font-size: 13px;
+    line-height: 1.4;
+    padding: 4px;
+    letter-spacing: -0.005em;
+  }
+  .cowork-composer textarea::placeholder { color: rgba(255,255,255,0.40); }
+  .cowork-send {
+    background: var(--mint);
+    color: #04201b;
+    border: 0;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font: inherit; font-size: 12px; font-weight: 600;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .cowork-send:hover:not(:disabled) { background: var(--mint-deep); }
+  .cowork-send:disabled {
+    background: rgba(255,255,255,0.10);
+    color: rgba(255,255,255,0.35);
+    cursor: default;
+  }
+  .cowork-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    overflow-y: auto;
+    min-height: 0;
+    padding: 2px;
+    scrollbar-width: none;
+  }
+  .cowork-grid::-webkit-scrollbar { display: none; }
+  .cowork-card {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px;
+    padding: 10px;
+    cursor: pointer;
+    transition: 0.12s;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .cowork-card:hover {
+    background: rgba(255,255,255,0.10);
+    border-color: rgba(255,255,255,0.20);
+  }
+  .cowork-card.live {
+    border-color: rgba(94,234,212,0.35);
+    background: rgba(94,234,212,0.06);
+  }
+  .cowork-card .cowork-name {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 500; color: var(--ink);
+    letter-spacing: -0.005em;
+  }
+  .cowork-card .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--ink-faint);
+  }
+  .cowork-card.live .dot {
+    background: var(--mint);
+    box-shadow: 0 0 6px var(--mint);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .cowork-card .cowork-dir {
+    font-size: 10px; color: var(--ink-mute);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .cowork-card .cowork-status {
+    font-size: 10px; color: var(--ink-faint);
+    margin-top: 2px;
+  }
+  .cowork-empty {
+    grid-column: 1 / -1;
+    padding: 24px 12px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--ink-mute);
+  }
+
+  /* Terminal view inside Code tab (with back button) */
+  .cc-term-view {
+    display: flex; flex-direction: column;
+    flex: 1; min-height: 0;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .cc-term-bar {
+    display: flex; align-items: center; gap: 6px;
+    padding: 2px 0 4px;
+  }
+  .cc-term-bar .back-btn {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.16);
+    color: var(--ink); font-size: 12px;
+    padding: 5px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .cc-term-bar .back-btn:hover { background: rgba(255,255,255,0.14); }
+  .cc-term-bar .title {
+    flex: 1;
+    font-size: 13px; color: var(--ink); font-weight: 500;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .cc-term-bar .title .dim {
+    color: var(--ink-mute); font-weight: 400;
+    margin-left: 6px; font-size: 11px;
+  }
+  .cc-term-bar .stop-btn {
+    background: rgba(255,80,80,0.10);
+    border: 1px solid rgba(255,80,80,0.25);
+    color: #fca5a5; font-size: 11px;
+    padding: 5px 9px;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  .cc-term-bar .stop-btn:hover { background: rgba(255,80,80,0.20); }
+
+  /* ─── Code-tab chat pane (Claude-Code session UI) ─── */
+  .cc-chat {
+    display: flex; flex-direction: column;
+    flex: 1; min-height: 0;
+    margin-top: 4px;
+  }
+  .cc-chat-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 12px;
+    font-size: 12px;
+    color: var(--ink);
+    margin-bottom: 8px;
+  }
+  .cc-chat-head .back {
+    background: transparent; border: 0;
+    color: var(--ink-soft);
+    font-size: 16px; cursor: pointer;
+    padding: 2px 6px; border-radius: 5px;
+  }
+  .cc-chat-head .back:hover { background: rgba(255,255,255,0.10); }
+  .cc-chat-head .path {
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .cc-chat-head .path .folder { color: var(--ink-mute); }
+  .cc-chat-head .path .sep { color: var(--ink-faint); margin: 0 2px; }
+  .cc-chat-head .caret { color: var(--ink-mute); font-size: 10px; }
+  .cc-chat-head .more {
+    color: var(--ink-mute); font-size: 14px; cursor: pointer;
+    padding: 2px 4px; border-radius: 4px;
+  }
+  .cc-chat-head .more:hover { background: rgba(255,255,255,0.08); color: var(--ink); }
+
+  .cc-chat-body {
+    flex: 1; min-height: 0;
+    overflow-y: auto;
+    padding: 4px 2px 8px;
+    display: flex; flex-direction: column;
+    gap: 8px;
+    scrollbar-width: none;
+  }
+  .cc-chat-body::-webkit-scrollbar { display: none; }
+  .cc-chat-empty {
+    text-align: center; color: var(--ink-mute);
+    padding: 24px 12px;
+    font-size: 12px;
+  }
+  .cc-msg {
+    padding: 10px 13px;
+    border-radius: 16px;
+    font-size: 13px;
+    line-height: 1.5;
+    max-width: 92%;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    letter-spacing: -0.005em;
+  }
+  .cc-msg.user {
+    align-self: flex-end;
+    background: linear-gradient(135deg, var(--mint), var(--mint-deep));
+    color: #04201b;
+    font-weight: 500;
+    border-bottom-right-radius: 6px;
+    box-shadow: 0 4px 14px rgba(94,234,212,0.25);
+  }
+  .cc-msg.assistant {
+    align-self: flex-start;
+    background:
+      linear-gradient(135deg,
+        rgba(255,255,255,0.14) 0%,
+        rgba(255,255,255,0.06) 100%);
+    border: 1px solid rgba(255,255,255,0.22);
+    color: var(--ink);
+    border-bottom-left-radius: 6px;
+    backdrop-filter: blur(22px) saturate(1.6);
+    -webkit-backdrop-filter: blur(22px) saturate(1.6);
+    box-shadow:
+      0 4px 18px rgba(0,0,0,0.18),
+      inset 0 1px 0 rgba(255,255,255,0.30),
+      inset 0 0 0 1px rgba(255,255,255,0.04);
+  }
+  .cc-msg.system {
+    align-self: center;
+    background: rgba(255,140,140,0.14);
+    border: 1px solid rgba(255,140,140,0.30);
+    color: #fca5a5;
+    font-size: 11px;
+    border-radius: 10px;
+  }
+  .cc-msg.pending {
+    color: var(--ink-mute);
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px;
+  }
+  .cc-msg.pending .dots { display: inline-flex; gap: 3px; }
+  .cc-msg.pending .dots .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--ink-mute);
+    animation: cc-dot-bounce 1.2s ease-in-out infinite;
+  }
+  .cc-msg.pending .dots .dot:nth-child(2) { animation-delay: 0.16s; }
+  .cc-msg.pending .dots .dot:nth-child(3) { animation-delay: 0.32s; }
+  @keyframes cc-dot-bounce {
+    0%, 80%, 100% { transform: translateY(0); opacity: 0.35; }
+    40% { transform: translateY(-4px); opacity: 1; }
+  }
+
+  /* Bubble fade-in on mount */
+  @keyframes cc-msg-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .cc-msg { animation: cc-msg-in 0.20s ease-out; }
+
+  /* Streaming cursor — pulsing block at the end of the in-flight reply */
+  @keyframes cc-cursor-blink {
+    0%, 50%   { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+  .cc-msg.streaming::after {
+    content: '▎';
+    margin-left: 2px;
+    color: var(--mint);
+    animation: cc-cursor-blink 0.85s steps(1, end) infinite;
+  }
+
+  /* Collapsible tool-use pill — "Edited a file, ran 2 commands ›".
+     Click to expand into a list of the individual actions. */
+  .cc-actions-pill {
+    align-self: flex-start;
+    max-width: 92%;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 12px;
+    overflow: hidden;
+    animation: cc-msg-in 0.20s ease-out;
+  }
+  .cc-actions-summary {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 13px;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    user-select: none;
+    color: var(--ink-soft);
+    font: inherit;
+    font-size: 12px;
+    text-align: left;
+    transition: background 0.10s;
+  }
+  .cc-actions-summary:hover { background: rgba(255,255,255,0.05); }
+  .cc-actions-pill .ap-caret {
+    color: var(--ink-faint);
+    font-size: 13px;
+    line-height: 1;
+    transition: transform 0.18s;
+    width: 10px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .cc-actions-pill.open .ap-caret {
+    transform: rotate(90deg);
+    color: var(--mint);
+  }
+  .cc-actions-pill .ap-summary {
+    flex: 1;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    letter-spacing: -0.005em;
+  }
+  .cc-actions-pill .ap-count {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--ink-mute);
+    background: rgba(255,255,255,0.08);
+    padding: 1px 7px;
+    border-radius: 999px;
+    flex-shrink: 0;
+    font-feature-settings: 'tnum';
+  }
+  .cc-actions-pill .ap-details {
+    padding: 4px 14px 10px 30px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    animation: cc-msg-in 0.16s ease-out;
+  }
+  .cc-actions-pill .ap-item {
+    font-family: 'Cascadia Code', 'Consolas', 'Menlo', monospace;
+    font-size: 11px;
+    color: var(--ink-soft);
+    line-height: 1.5;
+    padding: 3px 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  body.fullchat .cc-actions-pill {
+    background: rgba(255,255,255,0.03);
+    border-color: rgba(255,255,255,0.08);
+    backdrop-filter: blur(20px) saturate(1.4);
+    -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  }
+
+  /* Status pill — sits between the message stream and the composer.
+     Shows "Stewing… ●●●" while a response is in flight, then flips to
+     "✱  1m 19s  ·  ↓597 tokens" for the latest assistant reply. */
+  .cc-chat-status {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    margin: 4px 0 6px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 999px;
+    color: var(--ink-mute);
+    font-size: 12px;
+    font-feature-settings: 'tnum';
+    letter-spacing: -0.005em;
+    user-select: none;
+    animation: cc-msg-in 0.20s ease-out;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+  .cc-chat-status .dots { display: inline-flex; gap: 3px; }
+  .cc-chat-status .dots .dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--ink-mute);
+    animation: cc-dot-bounce 1.2s ease-in-out infinite;
+  }
+  .cc-chat-status .dots .dot:nth-child(2) { animation-delay: 0.16s; }
+  .cc-chat-status .dots .dot:nth-child(3) { animation-delay: 0.32s; }
+  .cc-chat-status .meta-spark {
+    color: #f97316;
+    font-size: 13px;
+    line-height: 1;
+    text-shadow: 0 0 6px rgba(249,115,22,0.45);
+  }
+  .cc-chat-status .meta-dot { color: var(--ink-faint); }
+
+  /* Multi-row composer (branch / input / tools) — Claude Code style.
+     NOTE: no `overflow: hidden` — it clips the model picker / more popovers
+     that render upward from the bottom row. The composer's outer radius
+     is enough by itself. */
+  .cc-chat-composer {
+    display: flex; flex-direction: column;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 14px;
+    margin-top: 4px;
+    transition: 0.15s;
+  }
+  .cc-chat-composer:focus-within {
+    border-color: rgba(255,255,255,0.22);
+    background: rgba(255,255,255,0.08);
+  }
+
+  /* Branch row */
+  .cc-composer-branch {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .branch-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px;
+    background: rgba(0,0,0,0.30);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--ink);
+    letter-spacing: -0.005em;
+  }
+  .branch-pill .git-icon { color: var(--ink-mute); flex-shrink: 0; }
+  .branch-pill .branch-arrow { color: var(--ink-mute); margin: 0 1px; }
+  .diff-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 9px;
+    background: rgba(0,0,0,0.30);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    font-size: 11px; font-weight: 600;
+    margin-left: auto;
+    font-feature-settings: 'tnum';
+  }
+  .diff-badge .add { color: #4ade80; }
+  .diff-badge .del { color: #f87171; }
+  .pr-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 10px;
+    background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 8px;
+    color: var(--ink);
+    font: inherit; font-size: 12px; font-weight: 500;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .pr-btn:hover { background: rgba(255,255,255,0.16); }
+  .pr-btn .pr-caret { color: var(--ink-mute); font-size: 9px; margin-left: 2px; }
+
+  /* Input row */
+  .cc-composer-input {
+    display: flex; align-items: flex-end; gap: 8px;
+    padding: 12px 14px 10px;
+  }
+  .cc-composer-input textarea {
+    flex: 1;
+    background: transparent;
+    border: 0; outline: 0; resize: none;
+    color: var(--ink);
+    font: inherit; font-size: 14px;
+    line-height: 1.4;
+    padding: 0;
+    max-height: 140px; min-height: 22px;
+    letter-spacing: -0.005em;
+  }
+  .cc-composer-input textarea::placeholder { color: rgba(255,255,255,0.35); }
+  .cc-composer-input .send {
+    width: 30px; height: 30px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.08);
+    color: var(--ink-mute);
+    border: 1px solid rgba(255,255,255,0.12);
+    cursor: pointer;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    transition: 0.15s;
+  }
+  .cc-composer-input .send:disabled {
+    background: rgba(255,255,255,0.04);
+    color: rgba(255,255,255,0.20);
+    cursor: default;
+  }
+  .cc-composer-input .send:not(:disabled):hover {
+    background: rgba(255,255,255,0.16);
+    color: var(--ink);
+    border-color: rgba(255,255,255,0.20);
+  }
+
+  /* Tools row */
+  .cc-composer-tools {
+    display: flex; align-items: center;
+    padding: 6px 8px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  .tools-left  { display: flex; align-items: center; gap: 2px; }
+  .tools-right { margin-left: auto; }
+
+  .tool-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 8px;
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    color: var(--ink-mute);
+    font: inherit; font-size: 12px;
+    cursor: pointer;
+    transition: 0.12s;
+    line-height: 1;
+  }
+  .tool-btn:hover { background: rgba(255,255,255,0.08); color: var(--ink); }
+  .tool-btn.active { color: var(--ink); background: rgba(255,255,255,0.10); }
+  .tool-btn.icon-only {
+    padding: 5px 7px;
+    min-width: 24px;
+    justify-content: center;
+  }
+  .tool-btn .tool-icon {
+    font-size: 11px;
+    color: var(--ink-faint);
+  }
+  .tool-btn.active .tool-icon { color: var(--mint); }
+
+  .model-indicator {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 0 6px;
+    font-size: 12px;
+    color: var(--ink-soft);
+    letter-spacing: -0.005em;
+  }
+  .model-indicator .model-spinner {
+    color: var(--mint);
+    display: inline-block;
+    font-size: 13px;
+    opacity: 0.5;
+  }
+  .model-indicator .model-spinner.on {
+    opacity: 1;
+    animation: model-spin 1.4s linear infinite;
+  }
+  .model-trigger {
+    background: transparent;
+    border: 0;
+    color: var(--ink-soft);
+    cursor: pointer;
+    font: inherit;
+    padding: 4px 6px;
+    border-radius: 6px;
+  }
+  .model-trigger:hover { background: rgba(255,255,255,0.08); color: var(--ink); }
+  @keyframes model-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
+  /* Recording mic */
+  .tool-btn.recording {
+    color: #fca5a5 !important;
+    background: rgba(255,80,80,0.18) !important;
+    animation: mic-pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes mic-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255,80,80,0.40); }
+    50%      { box-shadow: 0 0 0 4px rgba(255,80,80,0); }
+  }
+
+  /* Dirty-branch dot */
+  .branch-pill .dirty-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #fbbf24;
+    box-shadow: 0 0 4px rgba(251,191,36,0.6);
+    margin-left: 2px;
+  }
+
+  /* Popovers (model picker, more menu) */
+  .cc-popover {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    background: rgba(20,22,26,0.92);
+    backdrop-filter: blur(24px) saturate(1.4);
+    -webkit-backdrop-filter: blur(24px) saturate(1.4);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px;
+    padding: 4px;
+    min-width: 180px;
+    box-shadow: 0 12px 36px rgba(0,0,0,0.45),
+                inset 0 1px 0 rgba(255,255,255,0.08);
+    z-index: 100;
+    display: flex; flex-direction: column;
+  }
+  .cc-popover button {
+    display: flex; align-items: center; gap: 9px;
+    padding: 7px 10px;
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    color: var(--ink-soft);
+    font: inherit; font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+    transition: 0.10s;
+  }
+  .cc-popover button:hover:not(:disabled) {
+    background: rgba(255,255,255,0.08);
+    color: var(--ink);
+  }
+  .cc-popover button:disabled {
+    color: var(--ink-faint); cursor: default;
+  }
+  .cc-popover button.active {
+    color: var(--ink);
+    background: rgba(94,234,212,0.10);
+  }
+  .cc-popover button .ic {
+    width: 16px; text-align: center;
+    color: var(--ink-mute);
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+  .cc-popover button.active .ic { color: var(--mint); }
+  .cc-popover button .tier {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--ink-mute);
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.06);
+  }
+  .more-popover  { left: 0;  right: auto; }
+  .model-popover { right: 0; left: auto;  min-width: 200px; }
+
+  /* (legacy split — kept for fallback, harmless) */
+  .cc-shell {
+    display: flex;
+    gap: 8px;
+    flex: 1;
+    min-height: 0;
+    margin-top: 4px;
+  }
+  .cc-shell {
+    display: flex;
+    gap: 8px;
+    flex: 1;
+    min-height: 0;
+    margin-top: 4px;
+  }
+  .cc-sidebar {
+    flex: 0 0 138px;
+    display: flex; flex-direction: column;
+    background: rgba(0,0,0,0.22);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px;
+    padding: 8px 6px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 280px;
+  }
+  .cc-sidebar::-webkit-scrollbar { display: none; }
+  .cc-main {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column;
+    min-height: 280px;
+  }
+  .cc-tag-row {
+    display: flex; align-items: center; gap: 4px;
+    padding: 6px 6px;
+    color: var(--ink-soft);
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 0.04em; text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 6px;
+    user-select: none;
+  }
+  .cc-tag-row:hover { background: rgba(255,255,255,0.06); }
+  .cc-tag-row .caret {
+    width: 12px; height: 12px;
+    color: var(--ink-mute);
+    transition: transform 0.15s;
+  }
+  .cc-tag-row.open .caret { transform: rotate(90deg); color: var(--mint); }
+  .cc-tag-row .label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .cc-tag-row .ic {
+    width: 16px; height: 16px;
+    color: var(--ink-mute);
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px;
+  }
+  .cc-tag-row .ic:hover { color: var(--ink); background: rgba(255,255,255,0.10); }
+
+  .cc-side-instances { display: flex; flex-direction: column; padding: 0 0 4px 12px; }
+  .cc-side-instance {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 6px;
+    font-size: 12px;
+    color: var(--ink-soft);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: 0.12s;
+    border: 1px solid transparent;
+  }
+  .cc-side-instance:hover { background: rgba(255,255,255,0.06); color: var(--ink); }
+  .cc-side-instance.active {
+    background: rgba(94,234,212,0.10);
+    color: var(--ink);
+    border-color: rgba(94,234,212,0.30);
+  }
+  .cc-side-instance .nm {
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .cc-side-instance .run-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--mint);
+    box-shadow: 0 0 5px var(--mint);
+    flex-shrink: 0;
+  }
+  .cc-side-instance .x {
+    color: var(--ink-faint); font-size: 13px;
+    width: 14px; height: 14px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 3px;
+    opacity: 0;
+  }
+  .cc-side-instance:hover .x { opacity: 1; }
+  .cc-side-instance .x:hover { color: #fca5a5; background: rgba(255,80,80,0.18); }
+
+  .cc-side-add {
+    margin-top: auto;
+    padding: 8px 4px 0;
+    border-top: 1px dashed rgba(255,255,255,0.10);
+  }
+  .cc-side-add button {
+    width: 100%; padding: 6px;
+    font-size: 11px;
+    background: rgba(94,234,212,0.10);
+    border: 1px dashed rgba(94,234,212,0.4);
+    color: var(--mint);
+    border-radius: 8px; cursor: pointer;
+  }
+  .cc-side-add button:hover { background: rgba(94,234,212,0.18); }
+
+  .cc-empty-main {
+    flex: 1;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 6px;
+    color: var(--ink-mute); font-size: 12px;
+    background: rgba(0,0,0,0.22);
+    border: 1px dashed rgba(255,255,255,0.12);
+    border-radius: 12px;
+  }
+  .cc-empty-main .big { font-size: 18px; opacity: 0.6; }
+
+  /* ─── Embedded terminal viewport ─── */
+  .term-stack {
+    display: flex; flex-direction: column;
+    background: rgba(0,0,0,0.42);
+    border: 1px solid rgba(255,255,255,0.16);
+    border-radius: 12px;
+    overflow: hidden;
+    flex: 1;
+    min-height: 0;
+  }
+  .term-host {
+    flex: 1;
+    padding: 8px 8px 6px;
+    background: #0a0e1a;
+    min-height: 220px;
+    display: flex; flex-direction: column;
+  }
+  .term-host > .xterm-wrap { flex: 1; min-height: 0; }
+  .xterm-wrap, .xterm-wrap > .xterm { height: 100%; width: 100%; }
+  /* Hide xterm.js's own scrollbar inside the viewport */
+  .xterm .xterm-viewport,
+  .xterm-viewport { scrollbar-width: none; }
+  .xterm .xterm-viewport::-webkit-scrollbar,
+  .xterm-viewport::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+  /* Active instance row — when its terminal is the visible one */
+  .cc-instance { transition: 0.15s; cursor: pointer; }
+  .cc-instance.active {
+    background: rgba(94,234,212,0.10);
+    border-color: rgba(94,234,212,0.40);
+  }
+  .cc-instance .name { display: flex; align-items: center; gap: 6px; }
+  .cc-instance .run-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--mint);
+    box-shadow: 0 0 6px var(--mint);
+    flex-shrink: 0;
+  }
+  .cc-stopbtn {
+    color: var(--ink-soft) !important;
+    font-size: 9px !important;
+  }
+  .cc-stopbtn:hover {
+    color: #fca5a5 !important;
+    background: rgba(255,80,80,0.20) !important;
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- React + Babel from CDN (loads in WebView2) -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+<!-- xterm.js + addons for embedded VS-Code-style terminals -->
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-attach@0.9.0/lib/xterm-addon-attach.js"></script>
+
+<!-- Mascot (verbatim from design bundle) -->
+<script type="text/babel" src="clawd.jsx"></script>
+
+<!-- App — bound to the Python API -->
+<script type="text/babel" src="app.jsx"></script>
+</body>
+</html>

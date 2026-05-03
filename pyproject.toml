@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pc-manager-mcp"
+version = "0.1.0"
+description = "Heads-up PC monitor (tray + dashboard) and MCP server for Claude"
+requires-python = ">=3.10"
+dependencies = [
+    "psutil>=5.9",
+    "nvidia-ml-py>=12",
+    "pystray>=0.19",
+    "Pillow>=10.0",
+    "customtkinter>=5.2",
+    "pywin32>=306; sys_platform == 'win32'",
+    "wmi>=1.5; sys_platform == 'win32'",
+    "mcp>=1.0",
+    # Dock window + WebView2 host for the always-on-top heads-up UI.
+    "pywebview>=5.0",
+    # Internal localhost WS for terminal / chat / history endpoints
+    # (pinned <17 — handler signature changed across majors).
+    "websockets>=13,<17",
+    # Voice tab — uses Claude Code CLI (no API key); STT via Google free tier
+    "SpeechRecognition>=3.10",
+    "PyAudio>=0.2.14",
+    "pyttsx3>=2.99",                    # offline fallback (SAPI / Zira)
+    "edge-tts>=7.0",                    # primary: Microsoft neural voices (Aria)
+    "claude-agent-sdk>=0.1.70",         # persistent Claude session (warm = fast)
+]
+
+[project.scripts]
+pc-manager-hud = "pc_manager.dock:main"
+pc-manager-tray = "pc_manager.tray:main"
+pc-manager-mcp = "pc_manager.server:main"
+
+[tool.setuptools.packages.find]
+include = ["pc_manager*"]

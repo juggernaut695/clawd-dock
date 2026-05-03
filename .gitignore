@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+build/
+dist/
+.eggs/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual envs
+.venv/
+venv/
+env/
+ENV/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# Local runtime state
+*.log
+*.tmp
+*.bak
+
+# Project-specific
+# (chat sessions, persistent memory, user-saved tasks)
+pc_manager/data/
+chat_sessions.json
+tasks.json
+memory.json
+
+# OS
+Thumbs.db
+desktop.ini

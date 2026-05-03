@@ -1,0 +1,662 @@
+/* Side Dock — Glassmorphism / Vision Pro aesthetic */
+
+:root {
+  --ink: #f4f7f6;
+  --ink-soft: rgba(255, 255, 255, 0.84);
+  --ink-mute: rgba(255, 255, 255, 0.62);
+  --ink-faint: rgba(255, 255, 255, 0.32);
+  --mint: #5eead4;
+  --mint-deep: #2dd4bf;
+  --mint-glow: rgba(94, 234, 212, 0.55);
+  --glass: rgba(255, 255, 255, 0.13);
+  --glass-strong: rgba(255, 255, 255, 0.22);
+  --stroke: rgba(255, 255, 255, 0.30);
+  --stroke-soft: rgba(255, 255, 255, 0.16);
+  --shadow: 0 18px 50px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255,255,255,0.36), inset 0 0 0 1px rgba(255,255,255,0.06);
+}
+
+* { box-sizing: border-box; }
+
+.app {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  font-family: 'Inter', -apple-system, system-ui, sans-serif;
+  color: var(--ink);
+}
+
+/* Soft ambient colour wash sitting on the dock's opaque dark base.
+   The panels are translucent and read as frosted glass over this wash. */
+.app::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle 320px at 18% 12%, rgba(94,234,212,0.14) 0%, transparent 60%),
+    radial-gradient(circle 360px at 86% 26%, rgba(176,124,255,0.12) 0%, transparent 60%),
+    radial-gradient(circle 380px at 50% 70%, rgba(94,234,212,0.09) 0%, transparent 60%),
+    radial-gradient(circle 280px at 10% 92%, rgba(255,180,90,0.07) 0%, transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Faint noise grain — gives glass a real "frosted" texture instead of plastic */
+.app::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  opacity: 0.06;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.app > * { position: relative; z-index: 1; }
+
+/* ─── Header ────────────────────────────────────────── */
+.header {
+  margin: 18px 16px 0;
+  padding: 10px 14px 10px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  background:
+    linear-gradient(140deg,
+      rgba(255,255,255,0.16) 0%,
+      rgba(255,255,255,0.08) 100%);
+  border: 1px solid rgba(255,255,255,0.24);
+  border-radius: 999px;
+  box-shadow:
+    0 6px 22px rgba(0,0,0,0.25),
+    inset 0 1px 0 rgba(255,255,255,0.36);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.brand-mark {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--mint), var(--mint-deep));
+  box-shadow: 0 1px 4px rgba(45,212,191,0.5), inset 0 1px 0 rgba(255,255,255,0.6);
+  position: relative;
+}
+.brand-mark::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.6);
+}
+
+.subtitle-tag {
+  font-size: 11px;
+  color: var(--ink-mute);
+  letter-spacing: 0;
+  margin-left: 4px;
+  font-weight: 400;
+}
+
+.avatar {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4a6b65, #2a4a45);
+  border: 1.5px solid rgba(255,255,255,0.18);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+  color: rgba(255,255,255,0.95);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+/* ─── Tabs ────────────────────────────────────────── */
+.tabs {
+  margin: 12px 16px 0;
+  padding: 5px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+  background:
+    linear-gradient(140deg,
+      rgba(255,255,255,0.14) 0%,
+      rgba(255,255,255,0.06) 100%);
+  border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 999px;
+  box-shadow:
+    0 6px 22px rgba(0,0,0,0.25),
+    inset 0 1px 0 rgba(255,255,255,0.32);
+}
+
+.tab {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  padding: 9px 0;
+  text-align: center;
+  cursor: pointer;
+  border-radius: 999px;
+  transition: 0.25s;
+  letter-spacing: -0.01em;
+}
+.tab:hover { color: var(--ink); }
+.tab.active {
+  background: rgba(255, 255, 255, 0.32);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.45);
+}
+
+/* ─── Content area ────────────────────────────────────────── */
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.content::-webkit-scrollbar { width: 0; }
+
+/* ─── Glass panel base ──────────────────────────────────────────
+   No `backdrop-filter` — Monitor's stacked panels overload WebView2's
+   compositor and render black. We fake the frosted look with a layered
+   linear gradient + inset highlights / shadows over the dock's ambient
+   colour wash, which gives a richer glass feel than a flat alpha fill. */
+.panel {
+  background:
+    linear-gradient(140deg,
+      rgba(255,255,255,0.14) 0%,
+      rgba(255,255,255,0.07) 50%,
+      rgba(255,255,255,0.04) 100%);
+  border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 28px;
+  padding: 18px 20px;
+  box-shadow:
+    0 10px 36px rgba(0,0,0,0.30),
+    inset 0 1px 0 rgba(255,255,255,0.34),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    inset 0 0 0 1px rgba(255,255,255,0.05);
+  position: relative;
+  transform: translateZ(0);
+  will-change: transform;
+  contain: paint;
+}
+
+.panel.dark {
+  background: rgba(0,0,0,0.28);
+  border-color: rgba(255,255,255,0.18);
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.panel-title {
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.panel-icon {
+  width: 22px; height: 22px;
+  border-radius: 8px;
+  background: rgba(94, 234, 212, 0.14);
+  color: var(--mint);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.panel-arrow {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.14);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: 0.2s;
+  font-size: 14px;
+}
+.panel-arrow:hover { background: rgba(255,255,255,0.16); color: #fff; }
+
+/* ─── Voice tab ────────────────────────────────────────── */
+/* When Voice tab is active, its single panel should fill the content area */
+.content > .panel:only-child {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+/* Push the text fallback to the bottom of the voice panel */
+.voice-text-fallback { margin-top: auto; }
+/* Mascot can grow to absorb extra space */
+.voice-orb-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8px 0 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+.voice-text-fallback {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 14px;
+  padding: 8px 8px 8px 12px;
+}
+.voice-text-fallback:focus-within {
+  border-color: rgba(94,234,212,0.55);
+  background: rgba(255,255,255,0.14);
+}
+.vtf-icon {
+  color: var(--ink-soft);
+  display: flex;
+  align-items: center;
+}
+.vtf-input {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  letter-spacing: -0.005em;
+  padding: 4px 0;
+}
+.vtf-input::placeholder { color: rgba(255,255,255,0.45); }
+.vtf-send {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--mint);
+  color: #04201b;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: 0.15s;
+}
+.vtf-send:disabled {
+  background: rgba(255,255,255,0.14);
+  color: rgba(255,255,255,0.4);
+  cursor: default;
+}
+
+.transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.bubble {
+  max-width: 88%;
+  padding: 10px 14px;
+  border-radius: 18px;
+  font-size: 14px;
+  line-height: 1.45;
+  letter-spacing: -0.005em;
+}
+.bubble.you {
+  align-self: flex-end;
+  background: linear-gradient(135deg, var(--mint), var(--mint-deep));
+  color: #04201b;
+  font-weight: 500;
+  border-bottom-right-radius: 6px;
+  box-shadow: 0 4px 16px rgba(94,234,212,0.3);
+}
+.bubble.claude {
+  align-self: flex-start;
+  background: rgba(255,255,255,0.18);
+  border: 1px solid rgba(255,255,255,0.26);
+  color: var(--ink);
+  border-bottom-left-radius: 6px;
+}
+
+.mic-btn {
+  width: 100%;
+  background: linear-gradient(135deg, var(--mint), var(--mint-deep));
+  border: none;
+  color: #04201b;
+  padding: 14px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 18px rgba(94,234,212,0.35), inset 0 1px 0 rgba(255,255,255,0.4);
+  transition: 0.2s;
+}
+.mic-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 22px rgba(94,234,212,0.55), inset 0 1px 0 rgba(255,255,255,0.4); }
+
+.mic-btn .rec-dot {
+  width: 8px; height: 8px;
+  background: #04201b;
+  border-radius: 50%;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+.voice-status {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--ink-mute);
+}
+
+/* ─── Monitor tab ────────────────────────────────────────── */
+.metric-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.metric-card {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 18px;
+  padding: 12px 14px;
+  position: relative;
+  overflow: hidden;
+  /* No backdrop-filter — the parent .panel already provides one, and
+     stacking two filters on a transparent dock window paints black on
+     some WebView2 GPU paths (was making the Monitor tab go black). */
+}
+
+.metric-card .ml {
+  font-size: 11px;
+  color: var(--ink-mute);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.metric-card .mv {
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin-top: 2px;
+  line-height: 1;
+  font-feature-settings: 'tnum';
+}
+.metric-card .mv .unit {
+  font-size: 12px;
+  color: var(--ink-mute);
+  font-weight: 400;
+  margin-left: 2px;
+}
+
+.ring {
+  position: absolute;
+  top: 10px; right: 10px;
+  width: 32px; height: 32px;
+}
+
+.metric-card .sub {
+  font-size: 10px;
+  color: var(--ink-mute);
+  margin-top: 6px;
+  letter-spacing: 0;
+}
+
+.bar {
+  margin-top: 8px;
+  height: 5px;
+  background: rgba(255,255,255,0.20);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--mint), var(--mint-deep));
+  border-radius: 999px;
+}
+.bar-fill.warn { background: linear-gradient(90deg, #fbbf24, #f59e0b); }
+
+/* Network rows */
+.kv {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.14);
+  font-size: 13px;
+}
+.kv:last-child { border-bottom: none; padding-bottom: 0; }
+.kv:first-child { padding-top: 4px; }
+.kv .k {
+  color: var(--ink-soft);
+  display: flex; align-items: center; gap: 8px;
+  font-weight: 400;
+}
+.kv .v {
+  color: var(--ink);
+  font-weight: 500;
+  font-feature-settings: 'tnum';
+  letter-spacing: -0.01em;
+}
+.kv .arr {
+  width: 18px; height: 18px;
+  border-radius: 6px;
+  background: rgba(94,234,212,0.16);
+  color: var(--mint);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+}
+
+/* ─── Control tab ────────────────────────────────────────── */
+.action-primary {
+  width: 100%;
+  background: linear-gradient(135deg, var(--mint), var(--mint-deep));
+  border: none;
+  color: #04201b;
+  padding: 18px;
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  border-radius: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 8px 28px rgba(94,234,212,0.4), inset 0 1px 0 rgba(255,255,255,0.4);
+  transition: 0.2s;
+}
+.action-primary:hover { transform: translateY(-1px); }
+
+.action-primary .ap-arr {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: transparent;
+  display: flex; align-items: center; justify-content: center;
+  color: #04201b;
+}
+
+.action-result {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--mint);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 0 4px;
+  font-weight: 500;
+}
+.action-result::before {
+  content: '✓';
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--mint);
+  color: #04201b;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.action-btn {
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.22);
+  color: var(--ink);
+  padding: 18px 8px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  transition: 0.2s;
+  letter-spacing: -0.005em;
+}
+.action-btn:hover {
+  background: rgba(255,255,255,0.22);
+  transform: translateY(-1px);
+}
+.action-btn .icon {
+  width: 32px; height: 32px;
+  border-radius: 12px;
+  background: rgba(94,234,212,0.16);
+  color: var(--mint);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+}
+
+/* ─── Notes tab ────────────────────────────────────────── */
+.notes-area {
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  outline: none;
+  width: 100%;
+  height: 320px;
+  resize: none;
+  padding: 0;
+  caret-color: var(--mint);
+  letter-spacing: -0.005em;
+}
+.notes-area::placeholder { color: var(--ink-mute); }
+
+.notes-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.14);
+  font-size: 11px;
+  color: var(--ink-mute);
+}
+.notes-meta .saved {
+  color: var(--mint);
+  display: flex; align-items: center; gap: 5px;
+  font-weight: 500;
+}
+.notes-meta .saved::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--mint);
+  box-shadow: 0 0 6px var(--mint);
+}
+
+/* ─── Footer ────────────────────────────────────────── */
+.footer {
+  margin: 0 16px 14px;
+  padding: 9px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--ink-soft);
+  background:
+    linear-gradient(140deg,
+      rgba(255,255,255,0.14) 0%,
+      rgba(255,255,255,0.06) 100%);
+  border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 999px;
+  box-shadow:
+    0 6px 22px rgba(0,0,0,0.25),
+    inset 0 1px 0 rgba(255,255,255,0.32);
+}
+
+.footer .item {
+  display: flex; align-items: center; gap: 7px;
+  font-weight: 400;
+}
+
+.footer .bat {
+  display: flex; align-items: center; gap: 6px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.footer .bat-icon {
+  width: 22px; height: 11px;
+  border: 1.2px solid rgba(255,255,255,0.4);
+  border-radius: 3px;
+  position: relative;
+  padding: 1.2px;
+}
+.footer .bat-icon::after {
+  content: '';
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: var(--mint);
+  border-radius: 1px;
+}
+.footer .bat-icon::before {
+  content: '';
+  position: absolute;
+  right: -2.5px; top: 3px;
+  width: 1.5px; height: 3px;
+  background: rgba(255,255,255,0.4);
+  border-radius: 0 1px 1px 0;
+}
