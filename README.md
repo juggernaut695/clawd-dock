@@ -8,9 +8,21 @@ The dock registers as a Win32 AppBar so other windows reflow around it (just lik
 
 ## Screenshots
 
+### The dock — four tabs on the right edge of the screen
+
 |  Voice  |  Tasks  |  Code  |  Monitor  |
 | :-----: | :-----: | :----: | :-------: |
 | ![Voice](screenshots/1-voice.png) | ![Tasks](screenshots/2-tasks.png) | ![Code](screenshots/3-code.png) | ![Monitor](screenshots/4-monitor.png) |
+
+### Standalone windows
+
+Click a Recent in the **Code** tab and you get a frosted-glass chat window that replays the full conversation (text + collapsible "Edited a file, ran 2 commands ›" pills) and resumes the session via `claude -p --resume`:
+
+![Chat window](screenshots/6-chat-window.png)
+
+Click any task in the **Tasks** tab and a separate task editor pops out for the title + notes:
+
+![Task editor window](screenshots/7-task-window.png)
 
 ## What's in it
 
