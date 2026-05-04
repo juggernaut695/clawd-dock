@@ -1,10 +1,63 @@
 # clawd-dock
 
-> ⚠️ **Alpha release.** This is a working prototype, not a stable product. Expect rough edges, breaking changes, and bugs. Windows-only for now.
-
 A frameless, always-visible side dock for Windows that puts Claude on the right edge of your screen — with voice chat, todos, a Claude Code session navigator, live system monitor, and an MCP server so Claude can read and act on your machine.
 
 The dock registers as a Win32 AppBar so other windows reflow around it (just like the Windows taskbar) — it never overlaps your work, and it's always one glance away.
+
+## Prerequisites
+
+- **Windows 10 / 11**
+- **Python 3.10+** ([python.org](https://www.python.org/downloads/) — make sure "Add to PATH" is checked during install)
+- **Microsoft Edge WebView2 Runtime** — pre-installed on Windows 11. On Windows 10 grab the [evergreen installer](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
+- **Node.js + Claude Code CLI** for the Voice and Code tabs:
+  ```powershell
+  npm install -g @anthropic-ai/claude-code
+  ```
+- **NVIDIA GPU** *(optional)* — required for the GPU widget on the Monitor tab. AMD/Intel-only machines just see "no NVIDIA GPU" and everything else works.
+
+## Install
+
+```powershell
+git clone git@github.com:juggernaut695/clawd-dock.git
+cd clawd-dock
+pip install -e .
+```
+
+That installs the `pc-manager-mcp` package and registers the `pc-manager-tray` and `pc-manager-mcp` entry points.
+
+## Run
+
+### Side dock (the main UI)
+
+```powershell
+pythonw -m pc_manager.dock
+```
+
+…or double-click `start.bat` for a no-console launch.
+
+Set `PC_MANAGER_DEBUG=1` to enable WebView2 DevTools (F12 inside the dock).
+
+### Tray icon (lightweight — just live stats, no UI)
+
+```powershell
+pc-manager-tray
+```
+
+### Auto-start on login
+
+Press `Win+R`, type `shell:startup`, and drop a shortcut to `start.bat` into that folder.
+
+### Connect Claude Code to the MCP server
+
+```powershell
+claude mcp add pc-manager pc-manager-mcp
+```
+
+Then in any Claude Code session:
+
+> *how's my PC right now?*
+> *what's eating my RAM? clear it.*
+> *kill the chrome process with PID 12345*
 
 ## Screenshots
 
@@ -54,6 +107,7 @@ Click any task in the **Tasks** tab and a separate task editor pops out for the 
 - System-tray bar that mirrors the dock's CPU / RAM / GPU readouts even when the dock is hidden.
 
 ### MCP server (`pc-manager-mcp`)
+
 Nineteen tools exposed to Claude Code so you can let it drive the box:
 
 - **Stats**: `get_system_stats`, `get_cpu_stats`, `get_ram_stats`, `get_gpu_stats`, `get_disk_stats`, `get_top_processes`
@@ -74,73 +128,24 @@ Nineteen tools exposed to Claude Code so you can let it drive the box:
 - **MCP** (Model Context Protocol) server (`pc_manager/server.py`) for the 19 tools above.
 - **Win32 AppBar** registration so the dock pins to the right edge and reflows everything else around it.
 
-## Install
+## Engineering notes
 
-```powershell
-cd D:\path\to\clawd-dock
-pip install -e .
-```
-
-Requires:
-- **Windows 10/11** (uses `pywin32`, AppBar APIs, and ConPTY)
-- **Python 3.10+**
-- **Microsoft Edge WebView2 Runtime** ([download](https://developer.microsoft.com/en-us/microsoft-edge/webview2/))
-- **Claude Code CLI** on `PATH` for the Code/Voice tabs (`npm install -g @anthropic-ai/claude-code`)
-- **NVIDIA GPU** *(optional)* — required for the GPU widget; everything else degrades gracefully
-
-## Run
-
-### Side dock (the main UI)
-
-```powershell
-pythonw -m pc_manager.dock
-```
-
-…or double-click `start.bat` for a no-console launch.
-
-Set `PC_MANAGER_DEBUG=1` to enable WebView2 DevTools (F12 inside the dock).
-
-### Tray icon (lightweight, just stats)
-
-```powershell
-pc-manager-tray
-```
-
-### Auto-start on login
-
-`Win+R` → `shell:startup` → drop a shortcut to `start.bat` into that folder.
-
-### Connect Claude Code to the MCP server
-
-```powershell
-claude mcp add pc-manager pc-manager-mcp
-```
-
-Then in any Claude Code session:
-
-> *how's my PC right now?*
-> *what's eating my RAM? clear it.*
-> *kill the chrome process with PID 12345*
-
-## Hardening notes (alpha)
-
-The current build was just hardened for a 0.x cut — see commit history for the audit pass. Highlights:
+A few of the safety / robustness measures that went into the current build:
 
 - Path-traversal guard on the `/history/<sid>` and `/chat/<sid>` WS endpoints (UUID-shape regex + `Path.resolve().is_relative_to(base)` defense in depth).
 - 5-minute readline timeout around `claude -p` so a hung subprocess gets killed and surfaced rather than spinning forever.
 - Per-`chat_id` lock so a second tab can't double-spawn `claude -p --resume` and corrupt the shared JSONL.
-- Subprocess cleanup on WS disconnect — orphan `claude` processes used to leak; they're now `kill()`ed in `finally`.
+- Subprocess cleanup on WS disconnect — orphan `claude` processes are `kill()`ed in `finally`.
 - 4 MB WS-frame budget enforced (per-message text truncation + halve-the-list fallback) so long sessions don't blow past `max_size`.
 - Dock-shutdown teardown of the chat window so it doesn't end up orphaned.
-- Default `--permission-mode=acceptEdits` is now **off** in the chat window — you opt in per session.
+- Default `--permission-mode=acceptEdits` is **off** in the chat window — you opt in per session.
 
-## Known limitations
+## Limitations
 
-- **Windows only.** AppBar + ConPTY + pywin32 paths are all Windows-specific. macOS/Linux ports would need rewrites.
-- **Claude Desktop sessions only partially resumable.** `claude -p --resume <id>` works for sessions written by the CLI; Desktop-app sessions sometimes can't be resumed by the CLI version on `PATH` (mismatched versions). The dock surfaces stderr if this happens.
+- **Windows only.** AppBar + ConPTY + pywin32 paths are all Windows-specific.
+- **Claude Desktop sessions only partially resumable.** `claude -p --resume <id>` works for sessions written by the CLI; Desktop-app sessions sometimes can't be resumed by the CLI version on `PATH` if the versions don't match. The dock surfaces stderr if this happens.
 - **`get_claude_chats` is synchronous** — scanning many large JSONLs (40 MB+) on the dock thread can briefly stall the JSON-RPC bridge. A background mtime cache is on the roadmap.
-- **`nvidia-ml-py` is currently a hard dep** — soft-import / platform-marker is on the roadmap so AMD-only boxes don't carry the wheel.
-- **No tests yet.** This is an alpha; behavior is exercised manually and via the audit smoke tests.
+- **`nvidia-ml-py` is currently a hard dependency** — soft-import / platform-marker is on the roadmap so AMD-only boxes don't carry the wheel.
 
 ## Project layout
 
@@ -167,4 +172,4 @@ Not yet specified. Treat as "all rights reserved" until a license is added.
 
 ## Status
 
-**Alpha.** Use at your own risk. Issues and PRs welcome.
+Alpha. Issues and PRs welcome.
